@@ -120,45 +120,72 @@ void Serial_Printf(char *format, ...)
 }
 
 // USART2??????
+
+// 从main.c中引用的全局变量，用于调试
+extern volatile uint32_t g_usart_rx_count;
+
 void USART2_IRQHandler(void)
 {
-    static uint8_t RxState = 0;      // ?????
-    static uint8_t pRxPacket = 0;    // ???????
+    static uint8_t RxState = 0;      // 0: 空闲, 1: 正在接收@包
+    static uint8_t pRxPacket = 0;
     
     if (USART_GetITStatus(USART2, USART_IT_RXNE) == SET)
     {
+        // 只要接收到数据，就让计数器加1
+        g_usart_rx_count++;
+        
         uint8_t RxData = USART_ReceiveData(USART2);
         
-        if (RxState == 0)  // ??????
+        // 如果当前处于空闲状态
+        if (RxState == 0)
         {
-            if (RxData == '@' && Serial_RxFlag == 0)
+            // 检查是否是简单指令
+            if (RxData == '0' || RxData == '1' || RxData == '2' || RxData == 'H')
             {
-                RxState = 1;
-                pRxPacket = 0;
+                if (Serial_RxFlag == 0) // 确保上一个指令已被处理
+                {
+                    Serial_RxPacket[0] = RxData;
+                    Serial_RxPacket[1] = '\0';
+                    Serial_RxFlag = 1;
+                }
+            }
+            // 检查是否是@数据包的开头
+            else if (RxData == '@')
+            {
+                if (Serial_RxFlag == 0)
+                {
+                    RxState = 1; // 切换到接收@包的状态
+                    pRxPacket = 0;
+                    Serial_RxPacket[pRxPacket++] = RxData; // 将'@'也存入，方便解析
+                }
             }
         }
-        else if (RxState == 1)  // ????
+        // 如果正在接收@数据包
+        else if (RxState == 1)
         {
-            if (RxData == '\r')  // ?????
+            // 接收直到换行符
+            if (RxData == '\n')
             {
-                RxState = 2;
+                RxState = 0; // 接收完毕，返回空闲状态
+                Serial_RxPacket[pRxPacket] = '\0';
+                Serial_RxFlag = 1;
+            }
+            // 防止溢出
+            else if (pRxPacket < sizeof(Serial_RxPacket) - 1)
+            {
+                // 忽略回车符'\r'
+                if (RxData != '\r')
+                {
+                    Serial_RxPacket[pRxPacket++] = RxData;
+                }
             }
             else
             {
-                Serial_RxPacket[pRxPacket] = RxData;
-                pRxPacket++;
-            }
-        }
-        else if (RxState == 2)  // ?????
-        {
-            if (RxData == '\n')  // ?????
-            {
+                // 如果缓冲区满了，强制重置状态机
                 RxState = 0;
-                Serial_RxPacket[pRxPacket] = '\0';  // ??????
-                Serial_RxFlag = 1;                  // ????????
             }
         }
         
-        USART_ClearITPendingBit(USART2, USART_IT_RXNE);  // ??????
+        USART_ClearITPendingBit(USART2, USART_IT_RXNE);
     }
 }

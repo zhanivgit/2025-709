@@ -11,8 +11,11 @@
 
 // 小车参数宏定义
 #define WHEEL_DIAMETER_MM   96.0  // 车轮直径，单位毫米 (2 * 48mm)
-#define WHEEL_BASE_MM       320.0 // 轮距，单位毫米 (14cm)
+#define WHEEL_BASE_MM       280.0 // 轮距，单位毫米 (14cm)
 #define ENCODER_PPR         1040  // 编码器每圈脉冲数
+#define PI                  3.1415926535f
+
+volatile uint32_t g_usart_rx_count = 0; // 串口接收中断计数器
 int left_current_pulses;
 int right_current_pulses;
 int cy=0,cx=0;
@@ -47,70 +50,90 @@ void pid_motor_forward(int angle,int speed)  //巡线PID
 	MotorB_SetSpeed((int)(speed+pid_value));
 	erro_last=erro;
 }// 左边角度为正
-void pid_motor_inplace(int angle,int speed)
-{
-	// 由于移除了MPU6050，此函数不再依赖Yaw，但保留其结构以避免其他潜在错误
-	// 如果此函数不再需要，可以考虑删除
-	erro=angle;// 陀螺仪pid时，angle-YAW
-	I+=erro;
-	if(I>1000)
-	{
-		I=1000;
-	}
-	if(I<-1000)
-	{
-		I=-1000;
-		
-	}
-	pid_value=kp*erro+ki*I+kd*(erro-erro_last);
-	if(pid_value>speed)
-	{
-		pid_value=speed;
-	}
-	if(pid_value<-speed)
-	{
-		pid_value=-speed;
-	}
-  MotorA_SetSpeed(-(int)pid_value);
-	MotorB_SetSpeed(+(int)pid_value);
-	erro_last=erro;
-}
 
-// 使用编码器实现90度转弯
-void turn_90_degrees(int speed) {
-    // 计算单轮转动90度所需的编码器脉冲数
-    // 所需脉冲数 = (轮距 / (4 * 车轮直径)) * 编码器每圈脉冲数
-    float required_pulses_float = (WHEEL_BASE_MM / (4.0 * WHEEL_DIAMETER_MM)) * ENCODER_PPR;
-    int required_pulses = (int)(required_pulses_float + 0.5); // 四舍五入
 
-    Clear_Encoder_Count(); // 清零编码器计数
-
-    // 设置左右电机反向转动
-    MotorA_SetSpeed(speed);  // 左轮正转
-    MotorB_SetSpeed(-speed); // 右轮反转
-
+// 使用编码器实现任意角度转弯（带完整PID控制）
+// angle: 要旋转的角度，正数向右转，负数向左转
+// max_speed: 转弯时的最大速度
+void turn_degrees(float angle, int max_speed) {
+    // 计算旋转指定角度时，车体中心转过的圆心角对应的弧长
+    // 弧长 = (角度 / 360) * PI * 轮距
+    float center_arc_length = (fabs(angle) / 360.0f) * PI * WHEEL_BASE_MM;
     
+    // 计算每个轮子需要转动的圈数
+    // 圈数 = 弧长 / 轮子周长
+    float turns = center_arc_length / (PI * WHEEL_DIAMETER_MM);
+    
+    // 计算所需的总脉冲数
+    int required_pulses = (int)(turns * ENCODER_PPR);
+
+    // --- PID 参数 ---
+    float turn_kp = 1.8f;
+    float turn_ki = 0.005f;
+    float turn_kd = 2.0f;
+    
+    int min_speed = 60;
+
+    // PID 控制器变量
+    float integral = 0;
+    float last_error = 0;
+		
+		// 根据角度确定旋转方向
+		int direction = (angle > 0) ? 1 : -1;
+
+    Clear_Encoder_Count();
 
     while (1) {
-        left_current_pulses = Read_Left_Encoder();
-        right_current_pulses = Read_Right_Encoder();
+        // 读取编码器值，并根据方向统一为正数处理
+        left_current_pulses = abs(Read_Left_Encoder());
+        right_current_pulses = abs(Read_Right_Encoder());
 
-        // 显示左轮编码器值在第2行
-        OLED_ShowString(2, 1, "L_Enc:");
-        OLED_ShowSignedNum(2, 7, left_current_pulses, 5);
+        int average_pulses = (left_current_pulses + right_current_pulses) / 2;
+        
+        int error = required_pulses - average_pulses;
+        integral += error;
+        float derivative = error - last_error;
 
-        // 显示右轮编码器值在第3行
-        OLED_ShowString(3, 1, "R_Enc:");
-        OLED_ShowSignedNum(3, 7, right_current_pulses, 5);
-
-        // 当任一轮的绝对脉冲数达到所需值时停止
-        if (fabs(left_current_pulses) >= required_pulses || fabs(right_current_pulses) >= required_pulses) {
+        if (abs(error) <= 20 && abs(derivative) <= 5) {
             MotorA_SetSpeed(0);
             MotorB_SetSpeed(0);
             break;
         }
-        Delay_ms(1); // 小延时，避免CPU占用过高
+
+        int pid_output = (int)(turn_kp * error + turn_ki * integral + turn_kd * derivative);
+        
+        if (pid_output > max_speed) {
+            pid_output = max_speed;
+            integral -= error; 
+        }
+        if (pid_output < -max_speed) {
+            pid_output = -max_speed;
+            integral -= error;
+        }
+				
+				if (pid_output > 0 && pid_output < min_speed) {
+						pid_output = min_speed;
+				} else if (pid_output < 0 && pid_output > -min_speed) {
+						pid_output = -min_speed;
+				}
+
+        last_error = error;
+
+        // 根据direction变量设置电机转动方向
+        MotorA_SetSpeed(direction * pid_output);
+        MotorB_SetSpeed(-direction * pid_output);
+
+        OLED_ShowString(2, 1, "Err: ");
+        OLED_ShowSignedNum(2, 5, error, 5);
+        OLED_ShowString(3, 1, "PID: ");
+        OLED_ShowSignedNum(3, 5, pid_output, 5);
+        OLED_ShowString(4, 1, "Ang: ");
+        OLED_ShowSignedNum(4, 5, (int)angle, 5);
+
+        Delay_ms(10);
     }
+    MotorA_SetSpeed(0);
+    MotorB_SetSpeed(0);
 }
 
 // 返回值: 0=启动, 1=左转, 2=右转, 3=循迹数据, 8=停止, -1=无有效数据
@@ -154,70 +177,96 @@ int Parse_Serial_Data(void)
 	return result;
 }
 
+// 定义小车运行状态
+typedef enum {
+    STATE_WAITING,  // 等待启动指令
+    STATE_TRACKING, // 循迹状态
+		STATE_STOPPED   // 停止状态
+} CarState;
+
 int main(void)
-{  
-	OLED_Init();
-	Serial_Init();
-	Motor_Init();
-	Encoder_Init(); // 初始化编码器
-	Move(100);
+{
+    // --- 初始化 ---
+    OLED_Init();
+    Serial_Init();
+    Motor_Init();
+    Encoder_Init();
 
-		turn_90_degrees(150); // 转90度
-		Delay_ms(1000); // 延时1秒
+    CarState current_state = STATE_WAITING;
+    int command = -1;
+		int tracking_speed = 150; // 设定循迹速度
+		int turning_speed = 150;  // 设定转向速度
 
-	
-	
+    OLED_ShowString(1, 1, "System Ready.");
+    OLED_ShowString(2, 1, "State: WAITING");
 
+    while(1)
+    {
+        command = Parse_Serial_Data(); // 持续解析串口指令
+
+        // --- 调试代码：显示中断计数 ---
+        OLED_ShowString(4, 1, "RX_CNT:");
+        OLED_ShowNum(4, 8, g_usart_rx_count, 5);
+        // -----------------------------
+
+        switch (current_state)
+        {
+            case STATE_WAITING:
+                Move(0); // 确保电机停止
+                if (command == 0) // 收到启动指令 '0'
+                {
+                    current_state = STATE_TRACKING;
+                    OLED_Clear();
+                    OLED_ShowString(1, 1, "State: TRACKING");
+                }
+                break;
+
+            case STATE_TRACKING:
+                if (command == 1) // 收到左转指令 '1'
+                {
+                    OLED_Clear();
+                    OLED_ShowString(1, 1, "CMD: Turn Left");
+                    Move(0); // 转弯前先停一下
+                    Delay_ms(100);
+                    turn_degrees(-90, turning_speed);
+                    OLED_Clear();
+                    OLED_ShowString(1, 1, "State: TRACKING");
+                }
+                else if (command == 2) // 收到右转指令 '2'
+                {
+                    OLED_Clear();
+                    OLED_ShowString(1, 1, "CMD: Turn Right");
+                       Move(0); // 转弯前先停一下
+                    Delay_ms(100);
+                    turn_degrees(90, turning_speed);
+                    OLED_Clear();
+                    OLED_ShowString(1, 1, "State: TRACKING");
+                }
+                else if (command == 3) // 收到循迹数据 '@'
+                {
+                    // 根据OpenMV传来的PID循迹数据控制小车
+                    pid_motor_forward(cx, tracking_speed); 
+                    OLED_ShowString(2, 1, "CX:");
+                    OLED_ShowSignedNum(2, 4, cx, 5);
+                }
+                else if (command == 8) // 收到停止指令 'H'
+                {
+                    current_state = STATE_STOPPED;
+                    Move(0); // 转弯前先停一下
+                    OLED_Clear();
+                    OLED_ShowString(1, 1, "State: STOPPED");
+                    OLED_ShowString(2, 1, "Task Finished.");
+                }
+                // 如果没有收到任何有效指令(command == -1)，小车会保持上一个速度状态
+                // 这对于连续循迹是必要的
+                break;
+						
+						case STATE_STOPPED:
+								// 在停止状态下，什么都不做，等待复位
+								 Move(0); // 转弯前先停一下
+								break;
+        }
+        // 可以在这里加一个小的延时，防止CPU占用过高，但要注意不能影响循迹的实时性
+        // Delay_ms(1); 
+    }
 }
-// 	// 1. 等待启动指令 '0'
-// 	while(Parse_Serial_Data() != 0)
-// 	{
-// 		Delay_ms(100);
-// 	}
-
-// 	OLED_Clear();
-// 	OLED_ShowString(1, 1, "Start Tracking...");
-	
-// 	// 2. 进入主循环 + 等待转向指令
-// 	while (1)
-// 	{
-// 		int cmd = Parse_Serial_Data();
-		
-// 		if (cmd == 3) // 收到循迹数据
-// 		{
-// 			// 根据OpenMV传来的PID循迹数据控制小车，速度150
-// 			pid_motor_forward(cx, 150); 
-// 			OLED_ShowString(1, 1, "Tracking...");
-// 			OLED_ShowString(2, 1, "CX:");
-// 			OLED_ShowSignedNum(2, 4, cx, 5);
-// 		}
-// 		else if (cmd == 1) // 收到左转指令
-// 		{
-// 			OLED_Clear();
-// 			OLED_ShowString(1, 1, "CMD: 1, Turn Left");
-// 			MotorA_SetSpeed(0); // 停止电机
-// 			MotorB_SetSpeed(0); // 停止电机
-// 			OLED_Clear();
-// 			OLED_ShowString(1, 1, "Turn function removed."); // 提示转向功能已移除
-// 		}
-// 		else if (cmd == 2) // 收到右转指令
-// 		{
-// 			OLED_Clear();
-// 			OLED_ShowString(1, 1, "CMD: 2, Turn Right");
-// 			MotorA_SetSpeed(0); // 停止电机
-// 			MotorB_SetSpeed(0); // 停止电机
-// 			OLED_Clear();
-// 			OLED_ShowString(1, 1, "Turn function removed."); // 提示转向功能已移除
-// 		}
-// 		else if (cmd == 8) // 收到停止指令
-// 		{
-// 			OLED_Clear();
-// 			OLED_ShowString(1, 1, "CMD: H, Halt");
-// 			MotorA_SetSpeed(0);
-// 			MotorB_SetSpeed(0);
-// 			// 如果需要彻底停止程序，可以在这里break跳出while循环
-// 		}
-// 		// 如果没有收到任何有效指令(cmd == -1)，小车会保持上一个速度状态
-// 		// 除非收到停止指令，否则不会停止。如果需要没有收到数据就停止，请在else if (cmd == 8)后添加 MotorA_SetSpeed(0); MotorB_SetSpeed(0);
-// 	}
-// }
