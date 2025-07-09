@@ -1,0 +1,17 @@
+# 忽略所有文件
+*
+!.gitignore
+
+# 排除OPENMV文件夹
+!OPENMV/
+!OPENMV/**
+
+# 排除32/main.c
+!32/main.c
+
+# 排除32/Hardware文件夹中的.c和.h文件
+!32/Hardware/*.c
+!32/Hardware/*.h
+
+# 忽略32/Objects文件夹
+32/Objects/
