@@ -94,12 +94,11 @@
         {
             "name": "Target 1",
             "includePath": [
-                "e:\\trsalatec\\送药\\Start",
-                "e:\\trsalatec\\送药\\Library",
-                "e:\\trsalatec\\送药\\User",
-                "e:\\trsalatec\\送药\\System",
-                "e:\\trsalatec\\送药\\Hardware",
-                "e:\\trsalatec\\送药车\\32\\Hardware"
+                "e:\\trsalatec\\送药\\32\\Start",
+                "e:\\trsalatec\\送药\\32\\Library",
+                "e:\\trsalatec\\送药\\32\\User",
+                "e:\\trsalatec\\送药\\32\\System",
+                "e:\\trsalatec\\送药\\32\\Hardware"
             ],
             "defines": [
                 "USE_STDPERIPH_DRIVER",

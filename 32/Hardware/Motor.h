@@ -15,5 +15,5 @@ void MotorA_SetSpeed(int16_t speed);
 void MotorB_SetSpeed(int16_t speed);
 void Motor_TurnInPlace(uint16_t speed, uint8_t dir);
 void Motor_Stop(void);
-void forward(uint16_t speed);
+void Move(uint16_t speed);
 #endif

@@ -1,5 +1,8 @@
 #include "stm32f10x.h"                  // Device header
 #include "Motor.h"
+#include "stm32f10x_gpio.h" // 添加GPIO头文件
+#include "stm32f10x_tim.h"  // 添加TIM头文件
+#include "stm32f10x_rcc.h"  // 添加RCC头文件
 /**
   * 函    数：直流电机初始化
   * 参    数：无
@@ -117,7 +120,7 @@ void MotorB_SetSpeed(int16_t speed)
   * 参    数：Speed 要设置的速度，范围：-100~100
   * 返 回 值：无
   */
-void forward(uint16_t speed)
+void Move(uint16_t speed)
 {
 	MotorA_SetSpeed(speed);
 	MotorB_SetSpeed(speed);

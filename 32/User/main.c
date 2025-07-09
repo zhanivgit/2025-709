@@ -6,13 +6,22 @@
 #include "string.h"
 #include "stdlib.h"
 #include "stdio.h"
+#include "math.h" // 用于fabs函数
+#include "ENCODER.h" // 包含编码器头文件
+
+// 小车参数宏定义
+#define WHEEL_DIAMETER_MM   96.0  // 车轮直径，单位毫米 (2 * 48mm)
+#define WHEEL_BASE_MM       320.0 // 轮距，单位毫米 (14cm)
+#define ENCODER_PPR         1040  // 编码器每圈脉冲数
+int left_current_pulses;
+int right_current_pulses;
 int cy=0,cx=0;
 //----------------------pid角度环控制
 
 float kp=0.8,ki=0.01,kd=0.1;
 float erro=0,erro_last=0,I=0;
 float pid_value=0;
-void pid_motor_forward(int angle,int speed)
+void pid_motor_forward(int angle,int speed)  //巡线PID
 {
 	erro=0-angle;
 	I+=erro;
@@ -67,7 +76,43 @@ void pid_motor_inplace(int angle,int speed)
 	erro_last=erro;
 }
 
-//_________统一串口解析函数_________
+// 使用编码器实现90度转弯
+void turn_90_degrees(int speed) {
+    // 计算单轮转动90度所需的编码器脉冲数
+    // 所需脉冲数 = (轮距 / (4 * 车轮直径)) * 编码器每圈脉冲数
+    float required_pulses_float = (WHEEL_BASE_MM / (4.0 * WHEEL_DIAMETER_MM)) * ENCODER_PPR;
+    int required_pulses = (int)(required_pulses_float + 0.5); // 四舍五入
+
+    Clear_Encoder_Count(); // 清零编码器计数
+
+    // 设置左右电机反向转动
+    MotorA_SetSpeed(speed);  // 左轮正转
+    MotorB_SetSpeed(-speed); // 右轮反转
+
+    
+
+    while (1) {
+        left_current_pulses = Read_Left_Encoder();
+        right_current_pulses = Read_Right_Encoder();
+
+        // 显示左轮编码器值在第2行
+        OLED_ShowString(2, 1, "L_Enc:");
+        OLED_ShowSignedNum(2, 7, left_current_pulses, 5);
+
+        // 显示右轮编码器值在第3行
+        OLED_ShowString(3, 1, "R_Enc:");
+        OLED_ShowSignedNum(3, 7, right_current_pulses, 5);
+
+        // 当任一轮的绝对脉冲数达到所需值时停止
+        if (fabs(left_current_pulses) >= required_pulses || fabs(right_current_pulses) >= required_pulses) {
+            MotorA_SetSpeed(0);
+            MotorB_SetSpeed(0);
+            break;
+        }
+        Delay_ms(1); // 小延时，避免CPU占用过高
+    }
+}
+
 // 返回值: 0=启动, 1=左转, 2=右转, 3=循迹数据, 8=停止, -1=无有效数据
 int Parse_Serial_Data(void)
 {
@@ -114,13 +159,14 @@ int main(void)
 	OLED_Init();
 	Serial_Init();
 	Motor_Init();
-	Move(200);
-	Delay_ms(1000);
-	Motor_TurnInPlace(150,1);
-	Delay_ms(1000);
-	Motor_TurnInPlace(150,0);
-	Delay_ms(1000);
-	Motor_Stop();
+	Encoder_Init(); // 初始化编码器
+	Move(100);
+
+		turn_90_degrees(150); // 转90度
+		Delay_ms(1000); // 延时1秒
+
+	
+	
 
 }
 // 	// 1. 等待启动指令 '0'

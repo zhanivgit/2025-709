@@ -15,3 +15,13 @@
 
 # 忽略32/Objects文件夹
 32/Objects/
+
+# 忽略Keil和VSCode相关文件
+32/Project.uvguix.16200
+32/Project.uvoptx
+32/Project.uvprojx
+32/.vscode/c_cpp_properties.json
+32/.vscode/keil-assistant.log
+32/.vscode/uv4.log
+32/.vscode/uv4.log.lock
+32/Listings/Project.map
