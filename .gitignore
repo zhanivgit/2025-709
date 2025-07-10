@@ -10,8 +10,14 @@
 !32/main.c
 
 # 排除32/Hardware文件夹中的.c和.h文件
+# 注意这里的路径是相对于 Git 仓库根目录
 !32/Hardware/*.c
 !32/Hardware/*.h
+
+# 明确包含 Project/32/Hardware/ 下的 ENCODER 文件
+# 如果您的 ENCODER 文件真的在这个路径下，那么这两条规则是需要的
+!Project/32/Hardware/ENCODER.c
+!Project/32/Hardware/ENCODER.h
 
 # 忽略32/Objects文件夹
 32/Objects/
@@ -24,3 +30,5 @@
 32/.vscode/keil-assistant.log
 32/.vscode/uv4.log
 32/.vscode/uv4.log.lock
+# 忽略Project.map文件
+32/Listings/Project.map
