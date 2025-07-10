@@ -11,7 +11,7 @@
 
 // 小车参数宏定义
 #define WHEEL_DIAMETER_MM   96.0  // 车轮直径，单位毫米 (2 * 48mm)
-#define WHEEL_BASE_MM       280.0 // 轮距，单位毫米 (14cm)
+#define WHEEL_BASE_MM       260.0 // 轮距，单位毫米 (14cm)
 #define ENCODER_PPR         1040  // 编码器每圈脉冲数
 #define PI                  3.1415926535f
 
@@ -72,7 +72,7 @@ void turn_degrees(float angle, int max_speed) {
     float turn_ki = 0.005f;
     float turn_kd = 2.0f;
     
-    int min_speed = 60;
+    int min_speed = 150;
 
     // PID 控制器变量
     float integral = 0;
@@ -111,11 +111,11 @@ void turn_degrees(float angle, int max_speed) {
             integral -= error;
         }
 				
-				if (pid_output > 0 && pid_output < min_speed) {
-						pid_output = min_speed;
-				} else if (pid_output < 0 && pid_output > -min_speed) {
-						pid_output = -min_speed;
-				}
+        if (pid_output > 0 && pid_output < min_speed) {
+            pid_output = min_speed;
+        } else if (pid_output < 0 && pid_output > -min_speed) {
+            pid_output = -min_speed;
+        }
 
         last_error = error;
 
@@ -191,23 +191,36 @@ int main(void)
     Serial_Init();
     Motor_Init();
     Encoder_Init();
-
+	// turn_degrees(90, 300); // 旋转测试
+    // Delay_ms(1000); //
+    // turn_degrees(90, 300);
+    // Delay_ms(1000); //
+    // turn_degrees(90, 300);
+    // Delay_ms(1000); //
+    // turn_degrees(90, 300);
+    // Delay_ms(1000); //
     CarState current_state = STATE_WAITING;
     int command = -1;
 		int tracking_speed = 150; // 设定循迹速度
 		int turning_speed = 150;  // 设定转向速度
 
-    OLED_ShowString(1, 1, "System Ready.");
-    OLED_ShowString(2, 1, "State: WAITING");
+    OLED_ShowString(1, 1, "State: WAITING");
 
     while(1)
-    {
+    {   
+        // int left_encoder = Read_Left_Encoder();    //编码器读取测试
+        // int right_encoder = Read_Right_Encoder();
+        
+        // // 在OLED上显示
+        // OLED_ShowString(2, 1, "L:");
+        // OLED_ShowSignedNum(2, 3, left_encoder, 5); // 在第2行显示左编码器值
+        
+        // OLED_ShowString(3, 1, "R:");
+        // OLED_ShowSignedNum(3, 3, right_encoder, 5); // 在第3行显示右编码器值
+        
+        // Delay_ms(100); // 延时100毫秒，方便观察
         command = Parse_Serial_Data(); // 持续解析串口指令
 
-        // --- 调试代码：显示中断计数 ---
-        OLED_ShowString(4, 1, "RX_CNT:");
-        OLED_ShowNum(4, 8, g_usart_rx_count, 5);
-        // -----------------------------
 
         switch (current_state)
         {
